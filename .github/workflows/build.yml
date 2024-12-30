@@ -2,12 +2,14 @@ name: Build
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
+      - zh-CN
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  actions: write
+  contents: write
 
 jobs:
   build:
@@ -28,6 +30,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: 'zh-CN'
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
@@ -39,6 +43,17 @@ jobs:
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{env.BUILD_PLATFORM}} ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Pack builds
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        mkdir shell-${{matrix.platform}}
+        rm -r ${{env.BIN_PATH}}\*.lib
+        rm -r ${{env.BIN_PATH}}\*.exp
+        rm -r ${{env.BIN_PATH}}\*.wixpdb
+        rm -r ${{env.BIN_PATH}}\ca.dll
+        Copy-Item -Path ${{env.BIN_PATH}}\* -Destination shell-${{matrix.platform}} -Recurse
+        Compress-Archive -Path shell-${{matrix.platform}} -DestinationPath shell-${{matrix.platform}}.zip
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -55,3 +70,23 @@ jobs:
         compression-level: 6
         overwrite: false
         include-hidden-files: false
+
+    - name: Create release
+      continue-on-error: true
+      uses: ncipollo/release-action@v1.14.0
+      with:
+        name: 中文汉化
+        allowUpdates: true
+        tag: zh-CN
+        commit: zh-CN
+        replacesArtifacts: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+        artifacts: "shell-${{matrix.platform}}.zip"
+
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        repository: ${{ github.repository }}
+        retain_days: 0
+        keep_minimum_runs: 2
